@@ -1,0 +1,39 @@
+name: Sync Vendas Firebird -> Supabase
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # incremental: a cada 15 min
+    - cron: '0 6 * * *'      # full resync: 06:00 UTC (~03:00 horário de Brasília)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Modo de sincronização (use "full" na primeira execução, pra trazer o histórico inteiro)'
+        required: false
+        default: 'incremental'
+        type: choice
+        options:
+          - incremental
+          - full
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependências
+        working-directory: ./scripts
+        run: npm install axios @supabase/supabase-js
+
+      - name: Rodar sincronização
+        working-directory: ./scripts
+        env:
+          FIREBIRD_API_KEY: ${{ secrets.FIREBIRD_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_MODE: ${{ github.event.inputs.mode || (github.event.schedule == '0 6 * * *' && 'full' || 'incremental') }}
+        run: node sync.js
