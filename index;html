@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Comercial — Universal Juntas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --verde:#00833E; --verde-escuro:#00642F; --verde-profundo:#003A1C; --verde-claro:#DFF2E6;
+    --cinza-escuro:#2B2B2B; --cinza-medio:#6B6B6B; --cinza-claro:#E6E6E6; --branco:#FFFFFF;
+    --sucesso:#16A34A; --aviso:#FBBF24; --erro:#DC2626; --info:#2563EB;
+    --sans:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);color:var(--cinza-escuro);background:var(--branco);font-size:15px;line-height:1.5;}
+
+  .topnav{display:flex;align-items:center;gap:40px;padding:0 32px;height:64px;border-bottom:1px solid var(--cinza-claro);}
+  .brand{font-size:19px;font-weight:600;letter-spacing:-0.01em;white-space:nowrap;}
+  .brand .a{color:var(--cinza-escuro);}
+  .brand .b{color:var(--verde);}
+  .tabs{display:flex;gap:4px;overflow-x:auto;}
+  .tab{font-family:var(--sans);font-size:14px;font-weight:500;color:var(--cinza-medio);background:none;border:none;
+       padding:10px 16px;cursor:pointer;border-radius:6px;white-space:nowrap;transition:background .15s,color .15s;}
+  .tab:hover{background:var(--verde-claro);color:var(--verde-profundo);}
+  .tab.active{color:var(--verde-profundo);background:var(--verde-claro);font-weight:600;}
+
+  .filterbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 32px;
+             border-bottom:1px solid var(--cinza-claro);flex-wrap:wrap;}
+  .filterbar select{font-family:var(--sans);font-size:14px;padding:7px 12px;border:1px solid var(--cinza-claro);
+                     border-radius:6px;background:var(--branco);color:var(--cinza-escuro);cursor:pointer;}
+  .sync-info{font-size:13px;color:var(--cinza-medio);}
+  .sync-info .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--sucesso);margin-right:6px;}
+  .sync-info.stale .dot{background:var(--aviso);}
+
+  main{padding:28px 32px 60px;max-width:1180px;}
+  .tabpanel{display:none;}
+  .tabpanel.active{display:block;animation:fadeUp .25s ease;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0;margin-bottom:36px;
+            border:1px solid var(--cinza-claro);border-radius:8px;overflow:hidden;}
+  .kpi{padding:20px 22px;border-left:3px solid var(--verde);border-right:1px solid var(--cinza-claro);}
+  .kpi:last-child{border-right:none;}
+  .kpi-label{font-size:13px;color:var(--cinza-medio);margin-bottom:8px;}
+  .kpi-value{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--cinza-escuro);}
+  .kpi-delta{font-size:12.5px;margin-top:6px;font-weight:500;}
+  .kpi-delta.up{color:var(--sucesso);}
+  .kpi-delta.down{color:var(--erro);}
+  .kpi-delta.flat{color:var(--cinza-medio);}
+
+  h2.section-title{font-size:16px;font-weight:600;margin:0 0 16px;color:var(--cinza-escuro);}
+  .chart-wrap{border:1px solid var(--cinza-claro);border-radius:8px;padding:20px;margin-bottom:36px;height:320px;}
+
+  table.data-table{width:100%;border-collapse:collapse;font-size:14px;}
+  .data-table th{text-align:left;font-weight:500;color:var(--cinza-medio);font-size:12.5px;
+                  padding:0 14px 10px;border-bottom:1px solid var(--cinza-claro);}
+  .data-table td{padding:12px 14px;border-bottom:1px solid var(--cinza-claro);}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table td.num, .data-table th.num{font-family:var(--mono);text-align:right;}
+  .badge{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:4px;}
+  .badge.a{background:var(--verde-claro);color:var(--verde-profundo);}
+  .badge.b{background:#FEF3C7;color:#92400E;}
+  .badge.c{background:var(--cinza-claro);color:var(--cinza-medio);}
+
+  .note{font-size:13px;color:var(--cinza-medio);background:var(--verde-claro);border-radius:6px;
+        padding:12px 16px;margin-bottom:20px;}
+
+  .empty-state{padding:60px 20px;text-align:center;color:var(--cinza-medio);}
+  .empty-state strong{display:block;color:var(--cinza-escuro);font-size:17px;margin-bottom:8px;}
+  .loading{padding:40px 0;text-align:center;color:var(--cinza-medio);font-size:14px;}
+
+  @media (max-width:640px){
+    .topnav{padding:0 16px;gap:20px;}
+    main{padding:20px 16px 40px;}
+    .kpi-grid{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="brand"><span class="a">Universal</span> <span class="b">Juntas</span></div>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="geral">Visão Geral</button>
+    <button class="tab" data-tab="clientes">Clientes</button>
+    <button class="tab" data-tab="representantes">Representantes</button>
+    <button class="tab" data-tab="produtos">Produtos</button>
+  </div>
+</nav>
+
+<div class="filterbar">
+  <select id="periodo">
+    <option value="mes">Este mês</option>
+    <option value="trimestre">Este trimestre</option>
+    <option value="ano">Este ano</option>
+  </select>
+  <span class="sync-info" id="syncInfo"><span class="dot"></span>Verificando última sincronização…</span>
+</div>
+
+<main>
+  <section id="tab-geral" class="tabpanel active">
+    <div id="geralContent"><div class="loading">Carregando…</div></div>
+  </section>
+
+  <section id="tab-clientes" class="tabpanel">
+    <div class="note">Mostrando código do cliente — nomes entram assim que <code>T_PESSOAS</code> for sincronizado.</div>
+    <h2 class="section-title">Curva ABC de clientes no período</h2>
+    <div id="clientesContent"><div class="loading">Carregando…</div></div>
+  </section>
+
+  <section id="tab-representantes" class="tabpanel">
+    <div class="note">Mostrando código do representante — nomes entram assim que <code>T_REPRESENTANTES</code> for sincronizado.</div>
+    <h2 class="section-title">Desempenho por representante no período</h2>
+    <div id="repsContent"><div class="loading">Carregando…</div></div>
+  </section>
+
+  <section id="tab-produtos" class="tabpanel">
+    <h2 class="section-title">Mix de vendas por produto no período</h2>
+    <div id="produtosContent"><div class="loading">Carregando…</div></div>
+  </section>
+</main>
+
+<script>
+const SUPABASE_URL = 'https://svbljwditogsiufsvlbc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2Ymxqd2RpdG9nc2l1ZnN2bGJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NzI2ODYsImV4cCI6MjEwNDU0ODY4Nn0.HBjAbTLolGjSwxFWhiPEFoVWR5v82uUN6d6LgU1zCpA';
+// Todos os registros de amostra vieram com EMPRESA = 1. Ajuste aqui se
+// esse banco também guardar vendas de outra empresa.
+const EMPRESA_FILTER = 1;
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const fmtMoeda = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}).format(v||0);
+const fmtNum = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+function intervaloPeriodo(chave){
+  const hoje = new Date();
+  let inicio, fim = new Date(hoje);
+  if(chave==='mes'){
+    inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  } else if(chave==='trimestre'){
+    const tri = Math.floor(hoje.getMonth()/3);
+    inicio = new Date(hoje.getFullYear(), tri*3, 1);
+  } else {
+    inicio = new Date(hoje.getFullYear(), 0, 1);
+  }
+  const duracaoMs = fim - inicio;
+  const fimAnterior = new Date(inicio.getTime()-1);
+  const inicioAnterior = new Date(fimAnterior.getTime()-duracaoMs);
+  return {
+    inicio: inicio.toISOString(), fim: fim.toISOString(),
+    inicioAnterior: inicioAnterior.toISOString(), fimAnterior: fimAnterior.toISOString()
+  };
+}
+
+async function buscarVendas(inicio, fim){
+  const { data, error } = await sb.from('ven_vendas').select('*')
+    .eq('empresa', EMPRESA_FILTER).gte('data', inicio).lte('data', fim);
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+async function checarSync(){
+  const el = document.getElementById('syncInfo');
+  const { data } = await sb.from('sync_control').select('last_synced_at').eq('table_name','ven_vendas').maybeSingle();
+  if(!data){
+    el.innerHTML = '<span class="dot" style="background:var(--erro)"></span>Nenhuma sincronização encontrada ainda';
+    el.classList.add('stale');
+    return false;
+  }
+  const min = Math.round((Date.now() - new Date(data.last_synced_at).getTime())/60000);
+  const stale = min > 60;
+  el.classList.toggle('stale', stale);
+  el.innerHTML = `<span class="dot"></span>Atualizado há ${min < 1 ? 'menos de 1 minuto' : min+' min'}`;
+  return true;
+}
+
+function estadoVazio(msg){
+  return `<div class="empty-state"><strong>Nenhum dado no período</strong>${msg}</div>`;
+}
+
+function delta(atual, anterior){
+  if(!anterior) return '<span class="kpi-delta flat">sem comparação</span>';
+  const pct = ((atual-anterior)/anterior*100);
+  const cls = pct>0.5?'up':pct<-0.5?'down':'flat';
+  const seta = cls==='up'?'▲':cls==='down'?'▼':'—';
+  return `<span class="kpi-delta ${cls}">${seta} ${Math.abs(pct).toFixed(1)}% vs período anterior</span>`;
+}
+
+async function renderGeral(periodo){
+  const { inicio, fim, inicioAnterior, fimAnterior } = intervaloPeriodo(periodo);
+  const [vendas, vendasAnt] = await Promise.all([
+    buscarVendas(inicio, fim), buscarVendas(inicioAnterior, fimAnterior)
+  ]);
+
+  const el = document.getElementById('geralContent');
+  if(vendas.length===0){
+    el.innerHTML = estadoVazio('<br>Se você já rodou o workflow com <code>mode: full</code>, confira se o período selecionado tem vendas registradas.');
+    return;
+  }
+
+  const faturado = vendas.reduce((s,v)=>s+Number(v.totalvenda||0),0);
+  const faturadoAnt = vendasAnt.reduce((s,v)=>s+Number(v.totalvenda||0),0);
+  const qtdPedidos = vendas.length;
+  const qtdPedidosAnt = vendasAnt.length;
+  const ticket = faturado/qtdPedidos;
+  const ticketAnt = faturadoAnt/(qtdPedidosAnt||1);
+  const clientesNoPeriodo = new Set(vendas.map(v=>v.codigo_cliente)).size;
+  const clientesAnt = new Set(vendasAnt.map(v=>v.codigo_cliente)).size;
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Faturamento no período</div><div class="kpi-value">${fmtMoeda(faturado)}</div>${delta(faturado,faturadoAnt)}</div>
+      <div class="kpi"><div class="kpi-label">Pedidos</div><div class="kpi-value">${fmtNum(qtdPedidos)}</div>${delta(qtdPedidos,qtdPedidosAnt)}</div>
+      <div class="kpi"><div class="kpi-label">Ticket médio</div><div class="kpi-value">${fmtMoeda(ticket)}</div>${delta(ticket,ticketAnt)}</div>
+      <div class="kpi"><div class="kpi-label">Clientes no período</div><div class="kpi-value">${fmtNum(clientesNoPeriodo)}</div>${delta(clientesNoPeriodo,clientesAnt)}</div>
+    </div>
+    <h2 class="section-title">Evolução mensal (últimos 12 meses)</h2>
+    <div class="chart-wrap"><canvas id="evolChart"></canvas></div>
+  `;
+
+  const dozeAtras = new Date(); dozeAtras.setMonth(dozeAtras.getMonth()-11); dozeAtras.setDate(1);
+  const historico = await buscarVendas(dozeAtras.toISOString(), new Date().toISOString());
+  const porMes = {};
+  historico.forEach(v=>{
+    const d = new Date(v.data);
+    const chave = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    porMes[chave] = (porMes[chave]||0) + Number(v.totalvenda||0);
+  });
+  const labels = Object.keys(porMes).sort();
+  new Chart(document.getElementById('evolChart'), {
+    type: 'line',
+    data: { labels, datasets: [{ data: labels.map(l=>porMes[l]), borderColor:'#00833E', backgroundColor:'#DFF2E6',
+             fill:true, tension:0.3, pointRadius:3 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+               scales:{ y:{ ticks:{ callback:v=>fmtMoeda(v) } } } }
+  });
+}
+
+function classificarABC(itens){
+  const total = itens.reduce((s,i)=>s+i.valor,0);
+  let acumulado = 0;
+  return itens.map(i=>{
+    acumulado += i.valor;
+    const pct = acumulado/total*100;
+    i.classe = pct<=80?'a':pct<=95?'b':'c';
+    return i;
+  });
+}
+
+async function renderClientes(periodo){
+  const { inicio, fim } = intervaloPeriodo(periodo);
+  const vendas = await buscarVendas(inicio, fim);
+  const el = document.getElementById('clientesContent');
+  if(vendas.length===0){ el.innerHTML = estadoVazio(''); return; }
+
+  const porCliente = {};
+  vendas.forEach(v=>{
+    const k = v.codigo_cliente;
+    porCliente[k] = porCliente[k] || { cliente:k, valor:0, pedidos:0 };
+    porCliente[k].valor += Number(v.totalvenda||0);
+    porCliente[k].pedidos += 1;
+  });
+  const lista = classificarABC(Object.values(porCliente).sort((a,b)=>b.valor-a.valor));
+
+  el.innerHTML = `<table class="data-table"><thead><tr>
+      <th>Cliente</th><th class="num">Pedidos</th><th class="num">Valor</th><th class="num">Ticket médio</th><th>Classe</th>
+    </tr></thead><tbody>
+    ${lista.slice(0,50).map(c=>`<tr>
+      <td>Cliente #${c.cliente}</td>
+      <td class="num">${fmtNum(c.pedidos)}</td>
+      <td class="num">${fmtMoeda(c.valor)}</td>
+      <td class="num">${fmtMoeda(c.valor/c.pedidos)}</td>
+      <td><span class="badge ${c.classe}">${c.classe.toUpperCase()}</span></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function renderRepresentantes(periodo){
+  const { inicio, fim } = intervaloPeriodo(periodo);
+  const vendas = await buscarVendas(inicio, fim);
+  const el = document.getElementById('repsContent');
+  if(vendas.length===0){ el.innerHTML = estadoVazio(''); return; }
+
+  const porRep = {};
+  vendas.forEach(v=>{
+    const k = v.codrep ?? 'sem-representante';
+    porRep[k] = porRep[k] || { rep:k, valor:0, pedidos:0, clientes:new Set() };
+    porRep[k].valor += Number(v.totalvenda||0);
+    porRep[k].pedidos += 1;
+    porRep[k].clientes.add(v.codigo_cliente);
+  });
+  const lista = Object.values(porRep).sort((a,b)=>b.valor-a.valor);
+
+  el.innerHTML = `<table class="data-table"><thead><tr>
+      <th>Representante</th><th class="num">Pedidos</th><th class="num">Clientes atendidos</th><th class="num">Valor vendido</th><th class="num">Ticket médio</th>
+    </tr></thead><tbody>
+    ${lista.map(r=>`<tr>
+      <td>${r.rep==='sem-representante'?'Sem representante':'Representante #'+r.rep}</td>
+      <td class="num">${fmtNum(r.pedidos)}</td>
+      <td class="num">${fmtNum(r.clientes.size)}</td>
+      <td class="num">${fmtMoeda(r.valor)}</td>
+      <td class="num">${fmtMoeda(r.valor/r.pedidos)}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function renderProdutos(periodo){
+  const { inicio, fim } = intervaloPeriodo(periodo);
+  const { data, error } = await sb.from('ven_itensvenda_detalhe').select('*')
+    .eq('empresa', EMPRESA_FILTER).gte('data', inicio).lte('data', fim);
+  const el = document.getElementById('produtosContent');
+  if(error){ el.innerHTML = estadoVazio('<br>A view ven_itensvenda_detalhe existe no seu banco? Ela precisa ser criada pelo schema.sql.'); console.error(error); return; }
+  if(!data || data.length===0){ el.innerHTML = estadoVazio(''); return; }
+
+  const porProduto = {};
+  data.forEach(i=>{
+    const k = i.codpro;
+    porProduto[k] = porProduto[k] || { codpro:k, nome:i.nompro, qtde:0, valor:0 };
+    porProduto[k].qtde += Number(i.qtde||0);
+    porProduto[k].valor += Number(i.total||0);
+  });
+  const totalGeral = Object.values(porProduto).reduce((s,p)=>s+p.valor,0);
+  const lista = classificarABC(Object.values(porProduto).sort((a,b)=>b.valor-a.valor));
+
+  el.innerHTML = `<table class="data-table"><thead><tr>
+      <th>Produto</th><th class="num">Qtde vendida</th><th class="num">Valor</th><th class="num">% do faturamento</th><th>Classe</th>
+    </tr></thead><tbody>
+    ${lista.slice(0,50).map(p=>`<tr>
+      <td>${p.nome ? p.nome : p.codpro}</td>
+      <td class="num">${fmtNum(p.qtde)}</td>
+      <td class="num">${fmtMoeda(p.valor)}</td>
+      <td class="num">${(p.valor/totalGeral*100).toFixed(1)}%</td>
+      <td><span class="badge ${p.classe}">${p.classe.toUpperCase()}</span></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+const renderers = { geral: renderGeral, clientes: renderClientes, representantes: renderRepresentantes, produtos: renderProdutos };
+
+function ativarAba(nome){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===nome));
+  document.querySelectorAll('.tabpanel').forEach(p=>p.classList.toggle('active', p.id==='tab-'+nome));
+  renderers[nome](document.getElementById('periodo').value);
+}
+
+document.getElementById('tabs').addEventListener('click', e=>{
+  if(e.target.matches('.tab')) ativarAba(e.target.dataset.tab);
+});
+document.getElementById('periodo').addEventListener('change', ()=>{
+  const atual = document.querySelector('.tab.active').dataset.tab;
+  ativarAba(atual);
+});
+
+(async function init(){
+  await checarSync();
+  ativarAba('geral');
+})();
+</script>
+</body>
+</html>
