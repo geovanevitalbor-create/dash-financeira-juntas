@@ -169,7 +169,20 @@ async function upsert(tableName, rows, conflictCols) {
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
     const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictCols });
-    if (error) throw new Error(`Erro gravando em ${tableName}: ${error.message}`);
+    if (error) {
+      console.error(`Erro no lote de ${tableName} (linhas ${i} a ${i + chunk.length}): ${error.message}`);
+      if (error.details) console.error(`Detalhes: ${error.details}`);
+      if (error.hint) console.error(`Dica do Postgres: ${error.hint}`);
+      // Refaz esse lote linha por linha só pra identificar exatamente qual registro é o problema.
+      for (const row of chunk) {
+        const { error: rowError } = await supabase.from(tableName).upsert([row], { onConflict: conflictCols });
+        if (rowError) {
+          console.error(`>>> LINHA PROBLEMÁTICA em ${tableName}:`, JSON.stringify(row));
+          console.error(`>>> Erro específico: ${rowError.message}${rowError.details ? ' | ' + rowError.details : ''}`);
+        }
+      }
+      throw new Error(`Erro gravando em ${tableName}: ${error.message}`);
+    }
   }
   return rows.length;
 }
