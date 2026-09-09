@@ -39,18 +39,35 @@ if (!API_KEY || !SUPABASE_URL || !SUPABASE_KEY) {
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function fetchPage(table, offset) {
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchPage(table, offset, tentativa = 1) {
   const url = `${API_BASE}/${table}?limit=${PAGE_SIZE}&offset=${offset}`;
-  const res = await axios.get(url, {
-    headers: { 'x-api-key': API_KEY },
-    httpsAgent,
-    timeout: 30000,
-  });
-  return res.data.data || [];
+  try {
+    const res = await axios.get(url, {
+      headers: { 'x-api-key': API_KEY },
+      httpsAgent,
+      timeout: 30000,
+    });
+    return res.data.data || [];
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 429 && tentativa <= 5) {
+      const espera = tentativa * 3000; // 3s, 6s, 9s, 12s, 15s
+      console.warn(`Limite de requisições (429) em ${table}, offset ${offset} — tentativa ${tentativa}/5, esperando ${espera}ms antes de repetir.`);
+      await sleep(espera);
+      return fetchPage(table, offset, tentativa + 1);
+    }
+    throw err;
+  }
 }
 
 // Busca a tabela a partir de um offset até vir uma página menor que o limite
 // (fim dos dados). Com startOffset=0 isso é um full scan da tabela inteira.
+// Uma pequena pausa entre páginas evita bater no limite de requisições do
+// servidor do fornecedor (confirmado: ele retorna 429 se pedirmos rápido demais).
 async function fetchAllFrom(table, startOffset = 0) {
   let offset = startOffset;
   let all = [];
@@ -59,6 +76,7 @@ async function fetchAllFrom(table, startOffset = 0) {
     all = all.concat(page);
     if (page.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
+    await sleep(250);
   }
   return { rows: all, finalOffset: offset };
 }
